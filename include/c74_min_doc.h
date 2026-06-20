@@ -119,6 +119,38 @@ typename enable_if<!has_class_description<min_class_type>::value>::type doc_get_
     returned_description = "Unknown";
 }
 
+
+#define MIN_DIGEST static constexpr const char* class_digest
+
+template <typename min_class_type>
+struct has_class_digest
+{
+    template <class, class>
+    class checker;
+
+    template <typename C>
+    static std::true_type test(checker<C, decltype(&C::class_digest)>*);
+
+    template <typename C>
+    static std::false_type test(...);
+
+    typedef decltype(test<min_class_type>(nullptr)) type;
+    static const bool value = is_same<std::true_type, decltype(test<min_class_type>(nullptr))>::value;
+};
+
+template <class min_class_type>
+typename enable_if<has_class_digest<min_class_type>::value>::type doc_get_digest(std::string& returned_digest)
+{
+    returned_digest = doc_format(min_class_type::class_digest);
+}
+
+template <class min_class_type>
+typename enable_if<!has_class_digest<min_class_type>::value>::type doc_get_digest(std::string& returned_digest)
+{
+    returned_digest = "";
+}
+
+
 template <class min_class_type>
 void doc_generate(const min_class_type& instance, const std::string& refpage_fullpath, const std::string& max_class_name, const std::string& min_class_name)
 {
@@ -167,14 +199,26 @@ void doc_generate(const min_class_type& instance, const std::string& refpage_ful
     string class_description;
 
     doc_get_description<min_class_type>(class_description);
-    strncpy(digest, class_description.c_str(), digest_length_max);
 
-    char* c = strstr(digest, ". ");
-    if (!c) {
-        c = strchr(digest, '.');
+    // A class may supply an explicit MIN_DIGEST; otherwise fall back to the
+    // historical behavior of deriving the digest from the first sentence of
+    // the description.
+    string custom_digest;
+    doc_get_digest<min_class_type>(custom_digest);
+    if (!custom_digest.empty()) {
+        strncpy(digest, custom_digest.c_str(), digest_length_max);
+        digest[digest_length_max - 1] = 0;
     }
-    if (c) {
-        *c = 0;
+    else {
+        strncpy(digest, class_description.c_str(), digest_length_max);
+
+        char* c = strstr(digest, ". ");
+        if (!c) {
+            c = strchr(digest, '.');
+        }
+        if (c) {
+            *c = 0;
+        }
     }
 
     refpage_file << "	<digest>" << digest << "</digest>" << endl;
